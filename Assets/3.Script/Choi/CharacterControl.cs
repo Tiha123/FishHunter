@@ -1,6 +1,7 @@
 using UnityEngine;
 using DG.Tweening;
 using System.Collections.Generic;
+using System.Collections;
 
 [RequireComponent(typeof(Rigidbody))]
 public class CharacterControl : MonoBehaviour
@@ -12,17 +13,20 @@ public class CharacterControl : MonoBehaviour
     [SerializeField] private int laneCount = 3;
     [SerializeField] LayerMask groundLayer;
 
+    public IngameUI ui;
+    public PlayerEventListener eventListener; 
+    public State state;
+    
+    private ParticleSystem bubbleParticle;
     public Rigidbody rb;
-    public List<Transform> lanes;
+    private List<Transform> lanes;
+    
     private int currentLane;
     private bool isJumping = false;
+
     public Animator animator;
     private Sequence sequence;
     public Camera mainCam;
-
-    public int score;
-    public int currentHealth;
-    public int currentMissile;
 
     private float jumpForce => characterProfile != null ? characterProfile.JumpForce : 5f;
     private float moveDuration => characterProfile != null ? characterProfile.LaneMoveDuration : 0.2f;
@@ -31,14 +35,28 @@ public class CharacterControl : MonoBehaviour
     {
         TryGetComponent(out rb);
         TryGetComponent(out animator);
+        TryGetComponent(out ui);
+        TryGetComponent(out eventListener);
+        TryGetComponent(out state);
+
+        lanes = TrackManager.I.lanes;
+        
         mainCam=Camera.main;
         sequence=DOTween.Sequence();
-        laneCount = Mathf.Max(1, lanes.Count); // 최소 1 보장
+        laneCount = Mathf.Max(1, lanes.Count);
 
-        currentLane = laneCount / 2; ;
+        currentLane = laneCount / 2;
         Vector3 startPos = transform.position;
         startPos.x = lanes[currentLane].position.x;
         transform.position = startPos;
+        bubbleParticle = GetComponentInChildren<ParticleSystem>();
+        renderers = GetComponentsInChildren<SkinnedMeshRenderer>();
+    }
+
+    void Start()
+    {
+        rb.isKinematic = true;
+        InGameManager.I.OnStart += GameStart;
     }
 
     private void Update()
@@ -47,9 +65,12 @@ public class CharacterControl : MonoBehaviour
         {
             return;
         }
-
         HandleLaneInput();
         HandleJumpInput();
+    }
+
+    void GameStart(){
+        rb.isKinematic = false;
     }
 
     private void HandleLaneInput()
@@ -57,8 +78,7 @@ public class CharacterControl : MonoBehaviour
         if (DOTween.IsTweening(transform))
         {
             sequence.Kill();
-        }
-        ;
+        };
 
         if (Input.GetKeyDown(KeyCode.LeftArrow) || Input.GetKeyDown(KeyCode.A))
         {
@@ -68,7 +88,8 @@ public class CharacterControl : MonoBehaviour
                 MoveToLane(currentLane);
             }
         }
-        else if (Input.GetKeyDown(KeyCode.RightArrow) || Input.GetKeyDown(KeyCode.D))
+        
+        if (Input.GetKeyDown(KeyCode.RightArrow) || Input.GetKeyDown(KeyCode.D))
         {
             if (currentLane < laneCount - 1)
             {
@@ -91,6 +112,7 @@ public class CharacterControl : MonoBehaviour
             DoJump();
         }
         Physics.Raycast(transform.position, -transform.up, out var hit, 0.2f, groundLayer);
+
         if(hit.point!=null)
         {
             isJumping=false;
@@ -100,16 +122,56 @@ public class CharacterControl : MonoBehaviour
     private void DoJump()
     {
         if (rb == null) return;
-
+        bubbleParticle.Play();
         isJumping = true;
         rb.velocity = new Vector3(rb.velocity.x, 0f, rb.velocity.z); // Y 초기화
         rb.AddForce(Vector3.up * jumpForce, ForceMode.Impulse);
     }
 
+    private bool canDamage = true;
+
     void OnTriggerEnter(Collider other)
     {
-        if(other.tag == "OBSTACLE"){
-            
-        }       
+        if(other.tag.Equals("OBSTACLE")){
+            if(!canDamage) return;
+
+            state.MinusHealth();
+            StartCoroutine(PlayerDamage());
+        }
+
+        if(other.tag.Equals("DEADZONE")){
+            InGameManager.I.OnGameOver?.Invoke(state.score);
+        }
+    }
+
+    public SkinnedMeshRenderer[] renderers;
+
+    IEnumerator PlayerDamage(){
+        canDamage = false;
+
+        float blinkDuration = 0.1f;
+        float totalDuration = 0.5f;
+        float elapsed = 0f;
+
+        while (elapsed < totalDuration)
+        {
+            SetRenderersVisible(false);
+            yield return new WaitForSeconds(blinkDuration);
+            SetRenderersVisible(true);
+            yield return new WaitForSeconds(blinkDuration);
+
+            elapsed += blinkDuration * 2;
+        }
+
+        yield return new WaitForSeconds(0.5f);
+        canDamage = true;
+    }
+
+    void SetRenderersVisible(bool visible)
+    {
+        foreach (var r in renderers)
+        {
+            r.enabled = visible;
+        }
     }
 }

@@ -30,11 +30,18 @@ public class Obstacle : MonoBehaviour
 
     void SetScale(Transform mesh){  
         float rnd = Random.Range(minScaleY, maxScaleY);
-        mesh.localScale = new Vector3(1,rnd,1);
+        mesh.localScale = new Vector3(1,mesh.localScale.y * rnd,1);
     }
 
     void CheckReturnPosition(){
-        if(transform.position.z <= 0.5f){
+        if(transform.position.z <= 5.5f){
+            OnDisableEvent?.Invoke(this.gameObject);
+        }
+    }
+
+    void OnTriggerEnter(Collider other)
+    {
+        if(other.tag.Equals("MISSILE")){
             OnDisableEvent?.Invoke(this.gameObject);
         }
     }

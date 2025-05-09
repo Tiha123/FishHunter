@@ -1,3 +1,4 @@
+using System.Collections;
 using System.Collections.Generic;
 using TMPro;
 using UnityEngine;
@@ -5,98 +6,108 @@ using UnityEngine.UI;
 
 public class IngameUI : MonoBehaviour
 {
+    [SerializeField] IconDatas iconDatas;
+    private CharacterControl player;
     [SerializeField] TextMeshProUGUI text_score;
-    [SerializeField] TextMeshProUGUI text_time;
-    
+
     [SerializeField] Transform healthbar;
-    [SerializeField] Transform missilebar;
-    
-    [SerializeField] GameObject health;
-    [SerializeField] GameObject missile;
-    [SerializeField] Button menubutton;
 
-    [SerializeField] int currentHealth = 3;
-    [SerializeField] int currentMissile = 3;
+    [SerializeField] GameObject inGamePopup;
+    [SerializeField] GameObject interferePanel;
 
-    List<Image> healths=new List<Image>();
-    List<Image> missiles=new List<Image>();
+    List<Image> healths = new List<Image>();
 
     void Awake()
     {
-        for (int i=0;i<currentHealth;i++)
+        for (int i=0;i < 3;i++)
         {
-            GameObject o = Instantiate(health, healthbar);
+            GameObject o = Instantiate(iconDatas.health, healthbar);
             healths.Add(o.GetComponent<Image>());
         }
-        for (int i=0;i<currentMissile;i++)
-        {
-            GameObject o = Instantiate(missile, missilebar);
-            missiles.Add(o.GetComponent<Image>());
-            Color col=missiles[i].color;
-            col.a=0;
-            missiles[i].color=col;
-        }
-        currentMissile=0;
+
+        player = GetComponentInParent<CharacterControl>();
     }
 
-    void OnEnable()
+    void Start()
     {
-
+        inGamePopup.SetActive(false);
+        interferePanel.SetActive(false);
     }
 
     void Update()
     {
-        text_time.text=Time.time.ToString();
+        if(Input.GetKeyDown(KeyCode.Escape)){
+            TogglePopup();
+        }
     }
 
-    public void Ongetscore(int score)
+    void TogglePopup(){
+        if(inGamePopup.activeSelf){
+            InGameManager.I.OnPause(false);
+            inGamePopup.SetActive(false);
+        }else{
+            InGameManager.I.OnPause(true);
+            inGamePopup.SetActive(true);
+        }
+    }
+
+    public void OnGetscore(int score)
     {
+        Debug.Log("스코어 갱신!");
         text_score.text=$"Point: <size=120%>{score}</size>";
     }
 
-
-    public void Onhealthchange(bool isDamage)
-    {
-        if(currentHealth>3||currentHealth<0) return;
-
-        if(isDamage==true)
-        {
-            currentHealth--;
-            Color col=healths[currentHealth].color;
-            col.a=0;
-            healths[currentHealth].color=col;
+    public void OnChagedHealth(int count){
+        Debug.Log($"현재 체력 : {count}");
+        for(int i=0;i<healths.Count;i++){
+            healths[i].enabled = false;
         }
-        else
-        {
-            currentHealth++;
-            Color col=healths[currentHealth].color;
-            col.a=255;
-            healths[currentHealth].color=col;
+
+        for(int i=0; i<count; i++){
+            healths[i].enabled = true;
         }
     }
 
-    public void Onmissilelaunch(bool isLaunch)
-    {
-         if(currentMissile>3||currentMissile<0) return;
+    public void Interfere(){
+        StartCoroutine(Interfere_Co(2.5f));
+    }
 
-        if(isLaunch==true)
+    IEnumerator Interfere_Co(float duration){
+
+        Image img = interferePanel.GetComponentInChildren<Image>();
+        interferePanel.SetActive(true);
+
+        yield return new WaitForSeconds(0.5f);
+
+        Color originalColor = img.color;
+        float elapsed = 0f;
+
+        while (elapsed < duration)
         {
-            currentMissile--;
-            Color col=missiles[currentMissile].color;
-            col.a=0;
-            missiles[currentMissile].color=col;
+            float alpha = Mathf.Lerp(1f, 0f, elapsed / duration - 0.5f);
+            img.color = new Color(originalColor.r, originalColor.g, originalColor.b, alpha);
+            elapsed += Time.deltaTime;
+            yield return null;
         }
-        else
-        {
-            currentMissile++;
-            Color col=missiles[currentMissile].color;
-            col.a=255;
-            missiles[currentMissile].color=col;
-        }
+
+        img.color = new Color(originalColor.r, originalColor.g, originalColor.b, 0f);
+        interferePanel.SetActive(false);
+    }
+
+    void OnEnable()
+    {
+        StartCoroutine(Registers_Co());
     }
 
     void OnDisable()
     {
-        //이벤트 해제
+        player.state.OnChangedScore -= OnGetscore;
+        player.state.OnChangedHealth -= OnChagedHealth;
+    }
+
+    IEnumerator Registers_Co(){
+        yield return new WaitForSeconds(1);
+        player.state.OnChangedScore += OnGetscore;
+        player.state.OnChangedHealth += OnChagedHealth;
     }
 }
